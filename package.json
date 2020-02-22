@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "description": "Sends a broadcast email.",
   "scripts": {
-    "start": "node gyl-broadcaster.js",
+    "start": "node gyl-broadcaster.js"
   },
   "author": "gyl-dev <gyl-dev@posteo.eu>",
   "license": "MIT",
