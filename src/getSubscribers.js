@@ -1,4 +1,5 @@
 const dynamodb = require('dynopromise-client')
+const dbTablePrefix = process.env.DB_TABLE_PREFIX || ''
 
 // Create DB connection
 const dbParams = {
@@ -21,7 +22,7 @@ const db = dynamodb(dbParams)
 const getSubscribersFromDb = (opts = {}, subscriberPool = [],
 		LastEvaluatedKey = null) => {
 	const scanParams = {
-		TableName: 'Subscribers',
+		TableName: `${dbTablePrefix}Subscribers`,
 		ConsistentRead: true,
 		FilterExpression: '(#conf <> :false1) '
 		+ 'and (#unsub = :false2 or attribute_not_exists(#unsub)) '
@@ -89,7 +90,7 @@ const getSubscribersIdsMatchingInteractionFilter = (
 	interaction, subscriberIds = {}, lastEvaluatedKey = null, errorCount = 0
 ) => {
 	const queryParams = {
-		TableName: 'Queue',
+		TableName: `${dbTablePrefix}Queue`,
 		KeyConditionExpression: '#queuePlacement = :sendDate',
 		FilterExpression: '#templateId = :templateId',
 		ExpressionAttributeNames: {

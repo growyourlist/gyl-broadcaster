@@ -1,5 +1,6 @@
 const dynamodb = require('dynopromise-client')
 const countSubscribers = require('./gyl-subscriber-counter')
+const dbTablePrefix = process.env.DB_TABLE_PREFIX || ''
 
 const dbParams = {
 	region: process.env.AWS_REGION,
@@ -18,14 +19,14 @@ let intervalId = null
 const startMonitoring = () => {
 	intervalId = setInterval(() => {
 		db.get({
-			TableName: 'Settings',
+			TableName: `${dbTablePrefix}Settings`,
 			Key: { settingName: 'previewSubscriberCount' }
 		})
 		.then(result => {
 			if (result && result.Item && result.Item.value.status === 'triggered') {
 				clearInterval(intervalId)
 				return db.put({
-					TableName: 'Settings',
+					TableName: `${dbTablePrefix}Settings`,
 					Item: {
 						settingName: 'previewSubscriberCount',
 						value: {

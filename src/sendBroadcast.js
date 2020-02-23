@@ -1,4 +1,5 @@
 const dynamodb = require('dynopromise-client')
+const dbTablePrefix = process.env.DB_TABLE_PREFIX || ''
 
 const debugLog = require('./debugLog')
 const getSubscribers = require('./getSubscribers')
@@ -71,10 +72,10 @@ const processBatches = (batches, emailCounter = 0) => new Promise(resolve => {
 	}
 	debugLog(`${(new Date).toISOString()}: Batch count: ${batches.length}`)
 	const nextBatch = batches.pop()
-	return db.batchWrite({ RequestItems: { Queue: nextBatch } })
+	return db.batchWrite({ RequestItems: { [`${dbTablePrefix}Queue`]: nextBatch } })
 	.then(result => {
 		const unprocessedItems = result.UnprocessedItems
-		&& result.UnprocessedItems.Queue
+		&& result.UnprocessedItems[`${dbTablePrefix}Queue`]
 		if (unprocessedItems && Array.isArray(unprocessedItems)) {
 			emailCounter += (nextBatch.length - unprocessedItems.length)
 			debugLog(`${(new Date).toISOString()}: Requeuing `

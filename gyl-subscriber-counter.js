@@ -1,6 +1,7 @@
 require('dotenv').config()
 const dynamodb = require('dynopromise-client')
 const getSubscribers = require('./src/getSubscribers')
+const dbTablePrefix = process.env.DB_TABLE_PREFIX || ''
 
 // Create DB connection
 const dbParams = {
@@ -20,7 +21,7 @@ const db = dynamodb(dbParams)
  * @param {number} countValue 
  */
 const updateCountValue = countValue => db.put({
-	TableName: 'Settings',
+	TableName: `${dbTablePrefix}Settings`,
 	Item: {
 		settingName: 'previewSubscriberCount',
 		value: countValue,

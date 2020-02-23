@@ -1,6 +1,7 @@
 require('dotenv').config()
 const dynamodb = require('dynopromise-client')
 const sendBroadcast = require('./src/sendBroadcast')
+const dbTablePrefix = process.env.DB_TABLE_PREFIX || ''
 
 const dbParams = {
 	region: process.env.AWS_REGION,
@@ -19,7 +20,7 @@ let intervalId = null
 const startMonitoring = () => {
 	intervalId = setInterval(() => {
 		db.get({
-			TableName: 'Settings',
+			TableName: `${dbTablePrefix}Settings`,
 			Key: { settingName: 'pendingBroadcast' }
 		})
 		.then(result => {
@@ -31,7 +32,7 @@ const startMonitoring = () => {
 				}
 				clearInterval(intervalId)
 				return db.delete({
-					TableName: 'Settings',
+					TableName: `${dbTablePrefix}Settings`,
 					Key: { settingName: 'pendingBroadcast' }
 				})
 				.then(() => sendBroadcast({
