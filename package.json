@@ -11,7 +11,7 @@
     "aws-sdk": "^2.579.0",
     "dotenv": "^8.2.0",
     "dynopromise-client": "^0.2.0",
-    "full-scan-for-dynamodb": "^0.0.8",
+    "full-scan-for-dynamodb": "^0.0.9",
     "moment-timezone": "^0.5.23",
     "rss-parser": "^3.6.2"
   },
