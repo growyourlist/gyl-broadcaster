@@ -34,7 +34,7 @@ const newQueueItem = (itemData, runAt = Date.now()) => {
 
 const lockQueue = () => {
 	return db.put({
-		TableName: 'Settings',
+		TableName: `${dbTablePrefix}Settings`,
 		Item: {
 			'settingName': 'isDoingBroadcast',
 			'value': true,
@@ -44,7 +44,7 @@ const lockQueue = () => {
 
 const unlockQueue = () => {
 	return db.put({
-		TableName: 'Settings',
+		TableName: `${dbTablePrefix}Settings`,
 		Item: {
 			'settingName': 'isDoingBroadcast',
 			'value': false,
@@ -54,7 +54,7 @@ const unlockQueue = () => {
 
 const validateConditions = () => {
 	return db.get({
-		TableName: 'Settings',
+		TableName: `${dbTablePrefix}Settings`,
 		ConsistentRead: true,
 		Key: { 'settingName': 'isDoingBroadcast' }
 	})
