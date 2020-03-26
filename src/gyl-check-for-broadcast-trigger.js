@@ -1,6 +1,6 @@
 require('dotenv').config()
 const dynamodb = require('dynopromise-client')
-const sendBroadcast = require('./src/sendBroadcast')
+const sendBroadcast = require('./sendBroadcast')
 const dbTablePrefix = process.env.DB_TABLE_PREFIX || ''
 
 const dbParams = {
@@ -25,7 +25,7 @@ const startMonitoring = () => {
 		})
 		.then(result => {
 			if (result && result.Item && Array.isArray(result.Item.value.tags) &&
-					result.Item.value.templateId && result.Item.value.properties) {
+					result.Item.value.templateId) {
 				let runIn = 0
 				if (result.Item.value.runAt) {
 					runIn = result.Item.value.runAt - Date.now()

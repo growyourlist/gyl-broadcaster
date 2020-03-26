@@ -1,6 +1,6 @@
 require('dotenv').config()
 const dynamodb = require('dynopromise-client')
-const getSubscribers = require('./src/getSubscribers')
+const getSubscribers = require('./getSubscribers')
 const dbTablePrefix = process.env.DB_TABLE_PREFIX || ''
 
 // Create DB connection
