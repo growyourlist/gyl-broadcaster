@@ -13,9 +13,11 @@
     "dynopromise-client": "^0.2.0",
     "full-scan-for-dynamodb": "^0.0.9",
     "moment-timezone": "^0.5.23",
-    "rss-parser": "^3.6.2"
+    "query-all-for-dynamodb": "^0.0.2",
+    "rss-parser": "^3.6.2",
+    "write-all-for-dynamodb": "^0.0.3"
   },
   "devDependencies": {
-    "eslint": "^6.7.1"
+    "eslint": "^7.9.0"
   }
 }
