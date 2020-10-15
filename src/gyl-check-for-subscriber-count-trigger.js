@@ -25,31 +25,40 @@ const startMonitoring = () => {
 		.then(result => {
 			if (result && result.Item && result.Item.value.status === 'triggered') {
 				clearInterval(intervalId)
-				return db.put({
-					TableName: `${dbTablePrefix}Settings`,
-					Item: {
-						settingName: 'previewSubscriberCount',
-						value: {
-							count: 0,
-							status: 'processing',
+				return db
+					.put({
+						TableName: `${dbTablePrefix}Settings`,
+						Item: {
+							settingName: 'previewSubscriberCount',
+							value: {
+								count: 0,
+								status: 'processing',
+								tags: result.Item.value.tags,
+								excludeTags: result.Item.value.excludeTags,
+								properties: result.Item.value.properties,
+								interactions: result.Item.value.interactions,
+								interactionWithAnyEmail:
+									result.Item.value.interactionWithAnyEmail,
+								ignoreConfirmed: result.Item.value.ignoreConfirmed,
+							},
+						},
+					})
+					.then(() =>
+						countSubscribers({
 							tags: result.Item.value.tags,
 							excludeTags: result.Item.value.excludeTags,
 							properties: result.Item.value.properties,
 							interactions: result.Item.value.interactions,
-						}
-					}
-				})
-				.then(() => countSubscribers({
-					tags: result.Item.value.tags,
-					excludeTags: result.Item.value.excludeTags,
-					properties: result.Item.value.properties,
-					interactions: result.Item.value.interactions,
-				}))
-				.then(() => startMonitoring())
+							interactionWithAnyEmail:
+								result.Item.value.interactionWithAnyEmail,
+							ignoreConfirmed: result.Item.value.ignoreConfirmed,
+						})
+					)
+					.then(() => startMonitoring());
 			}
 		})
 		.catch(err => console.error(err))
-	}, 1000)
+	}, 3000)
 }
 
 startMonitoring()

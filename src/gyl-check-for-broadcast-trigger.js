@@ -1,54 +1,79 @@
-require('dotenv').config()
-const dynamodb = require('dynopromise-client')
-const sendBroadcast = require('./sendBroadcast')
-const dbTablePrefix = process.env.DB_TABLE_PREFIX || ''
+require('dotenv').config();
+const AWS = require('aws-sdk');
+const sendBroadcast = require('./sendBroadcast');
+const dbTablePrefix = process.env.DB_TABLE_PREFIX || '';
 
 const dbParams = {
 	region: process.env.AWS_REGION,
-}
+};
 if (process.env.DYNAMODB_ENDPOINT) {
-	dbParams.endpoint = process.env.DYNAMODB_ENDPOINT
-}
-else {
-	dbParams.accessKeyId = process.env.AWS_ACCESS_KEY_ID
-	dbParams.secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY
-}
-
-const db = dynamodb(dbParams)
-
-let intervalId = null
-const startMonitoring = () => {
-	intervalId = setInterval(() => {
-		db.get({
-			TableName: `${dbTablePrefix}Settings`,
-			Key: { settingName: 'pendingBroadcast' }
-		})
-		.then(result => {
-			if (result && result.Item && Array.isArray(result.Item.value.tags) &&
-					result.Item.value.templateId) {
-				let runIn = 0
-				if (result.Item.value.runAt) {
-					runIn = result.Item.value.runAt - Date.now()
-				}
-				clearInterval(intervalId)
-				return db.delete({
-					TableName: `${dbTablePrefix}Settings`,
-					Key: { settingName: 'pendingBroadcast' }
-				})
-				.then(() => sendBroadcast({
-					tags: result.Item.value.tags,
-					excludeTags: result.Item.value.excludeTags,
-					templateId: result.Item.value.templateId,
-					properties: result.Item.value.properties,
-					interactions: result.Item.value.interactions,
-					runIn,
-				}))
-				.catch(err => console.error(err))
-				.then(() => startMonitoring())
-			}
-		})
-		.catch(err => console.error(err))
-	}, 1000)
+	dbParams.endpoint = process.env.DYNAMODB_ENDPOINT;
+} else {
+	dbParams.accessKeyId = process.env.AWS_ACCESS_KEY_ID;
+	dbParams.secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
 }
 
-startMonitoring()
+const db = new AWS.DynamoDB.DocumentClient(dbParams);
+
+const queryBroadcastQueueForActiveItemsInPhase = async (phase) => {
+	let queue = [];
+	let ExclusiveStartKey = null;
+	const now = `${Date.now().toString()}.0`;
+	do {
+		const res = await db
+			.query({
+				TableName: `${dbTablePrefix}BroadcastQueue`,
+				KeyConditionExpression: '#phase = :phase and #runAt <= :now',
+				ScanIndexForward: true,
+				ExpressionAttributeNames: {
+					'#runAt': 'runAt',
+					'#phase': 'phase',
+				},
+				ExpressionAttributeValues: {
+					':now': now,
+					':phase': phase,
+				},
+			})
+			.promise();
+		ExclusiveStartKey = res.LastEvaluatedKey;
+		if (Array.isArray(res.Items) && res.Items.length) {
+			queue = queue.concat(res.Items);
+		}
+	} while (ExclusiveStartKey);
+	return queue;
+};
+
+const getNextQueueItem = async () => {
+	const [pendingQueue, inTestQueue] = await Promise.all([
+		queryBroadcastQueueForActiveItemsInPhase('pending'),
+		queryBroadcastQueueForActiveItemsInPhase('in-test'),
+	]);
+	const queue = pendingQueue.concat(inTestQueue);
+	queue.sort((a, b) => parseFloat(a.runAt) - parseFloat(b.runAt));
+	return queue[0] || null;
+};
+
+const processBroadcastQueue = async () => {
+	try {
+		const nextQueueItem = await getNextQueueItem();
+		if (nextQueueItem) {
+			await sendBroadcast({
+				phase: nextQueueItem.phase,
+				runAt: nextQueueItem.runAt,
+				tags: nextQueueItem.tags,
+				excludeTags: nextQueueItem.excludeTags,
+				templateId: nextQueueItem.templateId,
+				templates: nextQueueItem.templates,
+				properties: nextQueueItem.properties,
+				interactions: nextQueueItem.interactions,
+				interactionWithAnyEmail: nextQueueItem.interactionWithAnyEmail,
+				ignoreConfirmed: nextQueueItem.ignoreConfirmed,
+			});
+		}
+		setTimeout(processBroadcastQueue, 20000);
+	} catch (err) {
+		console.error(err);
+	}
+};
+
+processBroadcastQueue();
