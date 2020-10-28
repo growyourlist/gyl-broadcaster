@@ -310,7 +310,7 @@ const sendVariableTemplatesBroadcast = async (broadcastData) => {
 			return;
 		}
 		console.log(`Sending to ${subscribers.length} subscribers`)
-		const newRunAt = `${2 * 60 * 1000 + broadcastData.validRunAt}.${
+		const newRunAt = `${4 * 60 * 60 * 1000 + broadcastData.validRunAt}.${
 			broadcastData.runAt.split('.')[1]
 		}`;
 		broadcastData = await updateBroadcastPhase(broadcastData, {
