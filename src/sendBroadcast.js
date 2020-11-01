@@ -56,6 +56,7 @@ const queueItemsForSubscriberGroup = async (subscriberGroup, broadcastData) => {
 						tagReason: broadcastData.tags,
 						startDate: broadcastData.startDate,
 						broadcastRunAtId: broadcastData.broadcastRunAtId,
+						tagOnClick: broadcastData.tagOnClick,
 					},
 					runAt
 				);

@@ -68,6 +68,7 @@ const processBroadcastQueue = async () => {
 				interactions: nextQueueItem.interactions,
 				interactionWithAnyEmail: nextQueueItem.interactionWithAnyEmail,
 				ignoreConfirmed: nextQueueItem.ignoreConfirmed,
+				tagOnClick: nextQueueItem.tagOnClick,
 			});
 		}
 		setTimeout(processBroadcastQueue, 20000);
