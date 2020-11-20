@@ -1,4 +1,5 @@
 const AWS = require('aws-sdk');
+const { default: PQueue } = require('p-queue');
 const {
 	fullScanForDynamoDB,
 	ReturnType: ScanReturnType,
@@ -73,6 +74,28 @@ const queueItemsForSubscriberGroup = async (subscriberGroup, broadcastData) => {
 	});
 };
 
+const updateSubscriberPendingBroadcasts = async (
+	subscriberId,
+	currentPendingBroadcasts,
+	newPendingBroadcast
+) => {
+	const newPendingBroadcasts = (Array.isArray(currentPendingBroadcasts) &&
+		currentPendingBroadcasts.concat(newPendingBroadcast)) || [
+		newPendingBroadcast,
+	];
+	await db
+		.update({
+			TableName: `${dbTablePrefix}Subscribers`,
+			Key: { subscriberId },
+			UpdateExpression: 'set #pendingBroadcasts = :pendingBroadcasts',
+			ExpressionAttributeNames: { '#pendingBroadcasts': 'pendingBroadcasts' },
+			ExpressionAttributeValues: {
+				':pendingBroadcasts': newPendingBroadcasts,
+			},
+		})
+		.promise();
+};
+
 const sendSingleTemplateBroadcast = async (broadcastData) => {
 	const subscribers = await getSubscribers({
 		tags: broadcastData.tags,
@@ -115,7 +138,9 @@ const sendVariableTemplatesBroadcastToSubscribers = async (
 	let groupNumber = 1;
 	while (group) {
 		if (group.subscribers.length) {
-			console.log(`group ${groupNumber++}: ${group.subscribers.length} subscribers`)
+			console.log(
+				`group ${groupNumber++}: ${group.subscribers.length} subscribers`
+			);
 			const groupBroadcastData = Object.assign({}, broadcastData, {
 				templateId: group.templateId,
 			});
@@ -131,13 +156,10 @@ const sendVariableTemplatesBroadcastToSubscribers = async (
 	return sendData;
 };
 
-const updateBroadcastPhase = async (
-	broadcastData,
-	patch
-) => {
-	console.log('deleting')
-	console.log(patch)
-	console.log(broadcastData)
+const updateBroadcastPhase = async (broadcastData, patch) => {
+	console.log('deleting');
+	console.log(patch);
+	console.log(broadcastData);
 	await db
 		.delete({
 			TableName: `${dbTablePrefix}BroadcastQueue`,
@@ -145,7 +167,7 @@ const updateBroadcastPhase = async (
 		})
 		.promise();
 	const Item = Object.assign({}, broadcastData, patch);
-	console.log('updating')
+	console.log('updating');
 	await db
 		.put({
 			TableName: `${dbTablePrefix}BroadcastQueue`,
@@ -310,7 +332,7 @@ const sendVariableTemplatesBroadcast = async (broadcastData) => {
 			});
 			return;
 		}
-		console.log(`Sending to ${subscribers.length} subscribers`)
+		console.log(`Sending to ${subscribers.length} subscribers`);
 		const newRunAt = `${4 * 60 * 60 * 1000 + broadcastData.validRunAt}.${
 			broadcastData.runAt.split('.')[1]
 		}`;
@@ -319,42 +341,27 @@ const sendVariableTemplatesBroadcast = async (broadcastData) => {
 			runAt: newRunAt,
 		});
 		const initialSendGroup = [];
-		const laterSendGroupSaves = [];
 		let subscriber = subscribers.pop();
+		const queue = new PQueue({ concurrency: 16 });
 		while (subscriber) {
 			if (Math.floor(Math.random() * 10) % 2 === 0) {
-				laterSendGroupSaves.push(
-					db
-						.update({
-							TableName: `${dbTablePrefix}Subscribers`,
-							Key: {
-								subscriberId: subscriber.subscriberId,
-							},
-							UpdateExpression: 'set #pendingBroadcasts = :pendingBroadcasts',
-							ExpressionAttributeNames: {
-								'#pendingBroadcasts': 'pendingBroadcasts',
-							},
-							ExpressionAttributeValues: {
-								':pendingBroadcasts': (Array.isArray(
-									subscriber.pendingBroadcasts
-								) &&
-									subscriber.pendingBroadcasts.concat(newRunAt)) || [newRunAt],
-							},
-						})
-						.promise()
+				queue.add(() =>
+					updateSubscriberPendingBroadcasts(
+						subscriber.subscriberId,
+						subscriber.pendingBroadcasts,
+						newRunAt
+					)
 				);
 			} else {
 				initialSendGroup.push(subscriber);
 			}
 			subscriber = subscribers.pop();
 		}
-		const [sendLaterResults, sendData] = await Promise.all([
-			Promise.all(laterSendGroupSaves),
-			sendVariableTemplatesBroadcastToSubscribers(
-				broadcastData,
-				initialSendGroup
-			),
-		]);
+		await queue.onIdle();
+		await sendVariableTemplatesBroadcastToSubscribers(
+			broadcastData,
+			initialSendGroup
+		);
 		await updateBroadcastPhase(broadcastData, {
 			phase: 'in-test',
 			runAt: newRunAt,
@@ -363,9 +370,11 @@ const sendVariableTemplatesBroadcast = async (broadcastData) => {
 		return;
 	} else if (broadcastData.phase === 'in-test') {
 		broadcastData = await updateBroadcastPhase(broadcastData, {
-			phase: 'determining-winning-template'
+			phase: 'determining-winning-template',
 		});
-		const { winningTemplate, splitTestResults } = await getWinningTemplate(broadcastData);
+		const { winningTemplate, splitTestResults } = await getWinningTemplate(
+			broadcastData
+		);
 		broadcastData = await updateBroadcastPhase(broadcastData, {
 			phase: 'sending',
 			templateId: winningTemplate,
@@ -374,11 +383,11 @@ const sendVariableTemplatesBroadcast = async (broadcastData) => {
 		delete broadcastData.templates;
 		await sendSingleTemplateBroadcast(broadcastData);
 		broadcastData = await updateBroadcastPhase(broadcastData, {
-			phase: 'cleaning-up'
+			phase: 'cleaning-up',
 		});
 		await removePendingBroadcast(broadcastData.broadcastRunAtId);
 		broadcastData = await updateBroadcastPhase(broadcastData, {
-			phase: 'sent'
+			phase: 'sent',
 		});
 		return;
 	}
@@ -408,12 +417,12 @@ const sendBroadcast = async (broadcastData) => {
 		});
 		await sendSingleTemplateBroadcast(broadcastData);
 		broadcastData = await updateBroadcastPhase(broadcastData, {
-			phase: 'sent'
+			phase: 'sent',
 		});
 	} else if (Array.isArray(broadcastData.templates)) {
 		broadcastData = await updateBroadcastPhase(broadcastData, {
 			broadcastRunAtId: broadcastData.broadcastRunAtId || broadcastData.runAt,
-		})
+		});
 		await sendVariableTemplatesBroadcast(broadcastData);
 	} else {
 		throw new Error(`Invalid broadcast data: ${JSON.stringify(broadcastData)}`);
