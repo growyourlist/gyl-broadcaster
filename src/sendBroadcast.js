@@ -373,7 +373,7 @@ const sendVariableTemplatesBroadcast = async (broadcastData) => {
 		});
 		return;
 	} else if (broadcastData.phase === 'in-test') {
-		broadcastData = await updateBroadcastPhase(broadcastD ata, {
+		broadcastData = await updateBroadcastPhase(broadcastData, {
 			phase: 'determining-winning-template',
 		});
 		const { winningTemplate, splitTestResults } = await getWinningTemplate(
