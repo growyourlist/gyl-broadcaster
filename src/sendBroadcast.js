@@ -346,7 +346,7 @@ const sendVariableTemplatesBroadcast = async (broadcastData) => {
 		while (subscriber) {
 			if (Math.floor(Math.random() * 10) % 2 === 0) {
 				const { subscriberId, pendingBroadcasts } = subscriber
-				const subscriberUpdate = () => updateSubscriberPendingBroadcasts(
+				const subscriberUpdate = async () => updateSubscriberPendingBroadcasts(
 						subscriberId,
 						pendingBroadcasts,
 						newRunAt
