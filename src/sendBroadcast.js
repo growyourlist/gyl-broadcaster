@@ -96,6 +96,21 @@ const updateSubscriberPendingBroadcasts = async (
 		.promise();
 };
 
+const updateSubscriberRemoveBroadcast = async (
+	subscriberId,
+	newPendingBroadcasts,
+) => {
+	await db
+		.update({
+			TableName: `${dbTablePrefix}Subscribers`,
+			Key: { subscriberId },
+			UpdateExpression: 'set #pendingBroadcasts = :pendingBroadcasts',
+			ExpressionAttributeNames: { '#pendingBroadcasts': 'pendingBroadcasts' },
+			ExpressionAttributeValues: { ':pendingBroadcasts': newPendingBroadcasts },
+		})
+		.promise();
+}
+
 const sendSingleTemplateBroadcast = async (broadcastData) => {
 	const subscribers = await getSubscribers({
 		tags: broadcastData.tags,
@@ -241,6 +256,7 @@ const getWinningTemplate = async (broadcastData) => {
 };
 
 const removePendingBroadcast = async (pendingBroadcast) => {
+	const queue = new PQueue({ concurrency: 16 });
 	await fullScanForDynamoDB(
 		db,
 		{
@@ -264,24 +280,16 @@ const removePendingBroadcast = async (pendingBroadcast) => {
 					return;
 				}
 				subscriber.pendingBroadcasts.splice(index, 1);
-				await db
-					.update({
-						TableName: `${dbTablePrefix}Subscribers`,
-						Key: {
-							subscriberId: subscriber.subscriberId,
-						},
-						UpdateExpression: 'set #pendingBroadcasts = :pendingBroadcasts',
-						ExpressionAttributeNames: {
-							'#pendingBroadcasts': 'pendingBroadcasts',
-						},
-						ExpressionAttributeValues: {
-							':pendingBroadcasts': subscriber.pendingBroadcasts,
-						},
-					})
-					.promise();
+				const { subscriberId, pendingBroadcasts } = subscriber
+				const subscriberRemoveBroadcast = async () => updateSubscriberRemoveBroadcast(
+					subscriberId,
+					pendingBroadcasts
+				)
+				queue.add(subscriberRemoveBroadcast)
 			},
 		}
 	);
+	await queue.onIdle();
 };
 
 const sendVariableTemplatesBroadcast = async (broadcastData) => {
@@ -356,7 +364,7 @@ const sendVariableTemplatesBroadcast = async (broadcastData) => {
 						pendingBroadcasts,
 						newRunAt
 					)
-				queue.add(() => subscriberUpdate);
+				queue.add(subscriberUpdate);
 			} else {
 				initialSendGroup.push(subscriber);
 			}
