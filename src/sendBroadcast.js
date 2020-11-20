@@ -333,7 +333,12 @@ const sendVariableTemplatesBroadcast = async (broadcastData) => {
 			return;
 		}
 		console.log(`Sending to ${subscribers.length} subscribers`);
-		const newRunAt = `${4 * 60 * 60 * 1000 + broadcastData.validRunAt}.${
+		const testDurationHours = (
+			process.env.TEST_DURATION_HOURS &&
+			!isNaN(parseFloat(process.env.TEST_DURATION_HOURS)) &&
+			parseFloat(process.env.TEST_DURATION_HOURS)
+		) || 4;
+		const newRunAt = `${testDurationHours * 60 * 60 * 1000 + broadcastData.validRunAt}.${
 			broadcastData.runAt.split('.')[1]
 		}`;
 		broadcastData = await updateBroadcastPhase(broadcastData, {
@@ -368,7 +373,7 @@ const sendVariableTemplatesBroadcast = async (broadcastData) => {
 		});
 		return;
 	} else if (broadcastData.phase === 'in-test') {
-		broadcastData = await updateBroadcastPhase(broadcastData, {
+		broadcastData = await updateBroadcastPhase(broadcastD ata, {
 			phase: 'determining-winning-template',
 		});
 		const { winningTemplate, splitTestResults } = await getWinningTemplate(
