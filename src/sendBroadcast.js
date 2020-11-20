@@ -345,13 +345,13 @@ const sendVariableTemplatesBroadcast = async (broadcastData) => {
 		const queue = new PQueue({ concurrency: 16 });
 		while (subscriber) {
 			if (Math.floor(Math.random() * 10) % 2 === 0) {
-				queue.add(() =>
-					updateSubscriberPendingBroadcasts(
-						subscriber.subscriberId,
-						subscriber.pendingBroadcasts,
+				const { subscriberId, pendingBroadcasts } = subscriber
+				const subscriberUpdate = () => updateSubscriberPendingBroadcasts(
+						subscriberId,
+						pendingBroadcasts,
 						newRunAt
 					)
-				);
+				queue.add(() => subscriberUpdate);
 			} else {
 				initialSendGroup.push(subscriber);
 			}
@@ -365,7 +365,6 @@ const sendVariableTemplatesBroadcast = async (broadcastData) => {
 		await updateBroadcastPhase(broadcastData, {
 			phase: 'in-test',
 			runAt: newRunAt,
-			sendData,
 		});
 		return;
 	} else if (broadcastData.phase === 'in-test') {
