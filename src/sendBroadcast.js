@@ -8,8 +8,8 @@ const { queryAllForDynamoDB, ReturnType } = require('query-all-for-dynamodb');
 const dbTablePrefix = process.env.DB_TABLE_PREFIX || '';
 const { writeAllForDynamoDB } = require('write-all-for-dynamodb');
 
-const debugLog = require('./debugLog');
 const getSubscribers = require('./getSubscribers');
+const createAutoMergedTemplate = require('./createAutoMergedTemplate');
 
 const dbParams = {
 	region: process.env.AWS_REGION,
@@ -234,23 +234,66 @@ const getWinningTemplate = async (broadcastData) => {
 			},
 		}
 	);
-	let winner = null;
+	let clicksWinner = null;
+	let opensWinner = null;
 	const splitTestResults = [];
+	const opensPlayARole = broadcastData.winningType === 'auto-merge subject (most opens) and content (most clicks) into new template' ||
+		broadcastData.winningType === 'subject: email with most opens';
 	results.forEach((templateResult, templateName) => {
 		const templateClickRatio =
 			templateResult.clicks / (templateResult.sends || 1);
+		const templateOpenRatio =
+			templateResult.opens / (templateResult.sends || 1);
 		splitTestResults.push(
-			Object.assign({}, templateResult, { templateName, templateClickRatio })
+			Object.assign({}, templateResult, { templateName, templateClickRatio, templateOpenRatio })
 		);
-		if (!winner || winner.clickRatio < templateClickRatio) {
-			winner = {
+		if (!clicksWinner || clicksWinner.clickRatio < templateClickRatio) {
+			clicksWinner = {
 				clickRatio: templateClickRatio,
 				templateName,
 			};
 		}
+		if (opensPlayARole) {
+			if (!opensWinner || opensWinner.openRatio < templateOpenRatio) {
+				opensWinner = {
+					openRatio: templateOpenRatio,
+					templateName,
+				}
+			}
+		}
 	});
+	let winningTemplateName = '';
+	if (
+		opensWinner &&
+		broadcastData.winningType === 'subject: email with most opens'
+	) {
+		winningTemplateName = opensWinner.templateName;
+	} else if(
+		opensWinner &&
+		opensWinner.templateName !== clicksWinner.templateName &&
+		broadcastData.winningType === 'auto-merge subject (most opens) and content (most clicks) into new template'
+	) {
+		const subjectTemplateName = opensWinner.templateName
+		const clicksTemplateName = clicksWinner.templateName
+		try {
+			winningTemplateName = await createAutoMergedTemplate({
+				subjectTemplateName,
+				clicksTemplateName,
+			})
+		} catch (err) {
+			console.error(err);
+			// If there was an error creating a merged template, just use the clicks
+			// winner
+			console.warn(
+				'Error while merging winning templates; falling back to clicks winner.'
+			)
+			winningTemplateName = clicksTemplateName;
+		}
+	} else {
+		winningTemplateName = clicksWinner.templateName;
+	}
 	return {
-		winningTemplate: winner.templateName,
+		winningTemplate: winningTemplateName,
 		splitTestResults,
 	};
 };
