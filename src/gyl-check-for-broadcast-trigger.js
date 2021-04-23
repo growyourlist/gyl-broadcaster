@@ -1,19 +1,18 @@
 require('dotenv').config();
 const AWS = require('aws-sdk');
+AWS.config = {
+	region: process.env.AWS_REGION,
+	credentials: {
+		accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+		secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+	}
+}
 const sendBroadcast = require('./sendBroadcast');
 const dbTablePrefix = process.env.DB_TABLE_PREFIX || '';
 
-const dbParams = {
-	region: process.env.AWS_REGION,
-};
-if (process.env.DYNAMODB_ENDPOINT) {
-	dbParams.endpoint = process.env.DYNAMODB_ENDPOINT;
-} else {
-	dbParams.accessKeyId = process.env.AWS_ACCESS_KEY_ID;
-	dbParams.secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
-}
-
-const db = new AWS.DynamoDB.DocumentClient(dbParams);
+const db = new AWS.DynamoDB.DocumentClient({
+	endpoint: process.env.DYNAMODB_ENDPOINT || undefined,
+});
 
 const queryBroadcastQueueForActiveItemsInPhase = async (phase) => {
 	let queue = [];
