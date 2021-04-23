@@ -1,0 +1,20 @@
+{
+	"compilerOptions": {
+		"outDir": "./dist",
+		"allowJs": true,
+		"target": "ES2017",
+		"module": "CommonJS",
+		"lib": ["ES2017", "ES2019.Object"],
+		"declaration": true,
+		"composite": true,
+		"moduleResolution": "Node",
+	},
+	"extends": "@tsconfig/node14/tsconfig.json",
+	"include": [
+		"src/**/*"
+	],
+	"exclude": [
+		"node_modules",
+		"**/*.spec.ts"
+	]
+}
