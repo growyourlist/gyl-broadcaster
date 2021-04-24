@@ -271,7 +271,7 @@ const getWinningTemplate = async (broadcastData) => {
 	} else if(
 		opensWinner &&
 		opensWinner.templateName !== clicksWinner.templateName &&
-		broadcastData.winningType === 'auto-merge subject (most opens) and content (most clicks) into new template'
+		broadcastData.winningType === 'auto-merge subject (most opens) and content (most clicks) into new email'
 	) {
 		const subjectTemplateName = opensWinner.templateName
 		const clicksTemplateName = clicksWinner.templateName
