@@ -26,7 +26,7 @@ async function createAutoMergedTemplate(params) {
 		(twoPad + (now.getMinutes())).slice(-2)
 	}${
 		(twoPad + (now.getSeconds())).slice(-2)
-	}`
+	}`;
 	await ses.createTemplate({
 		Template: {
 			TemplateName: mergedTemplateName,

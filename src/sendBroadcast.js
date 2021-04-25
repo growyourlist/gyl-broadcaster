@@ -280,11 +280,11 @@ const getWinningTemplate = async (broadcastData) => {
 		broadcastData.winningType === winningTypes.AutoMergeSubjectAndContent
 	) {
 		const subjectTemplateName = opensWinner.templateName
-		const clicksTemplateName = clicksWinner.templateName
+		const contentTemplateName = clicksWinner.templateName
 		try {
 			winningTemplateName = await createAutoMergedTemplate({
 				subjectTemplateName,
-				clicksTemplateName,
+				contentTemplateName,
 			})
 		} catch (err) {
 			console.error(err);
@@ -293,7 +293,7 @@ const getWinningTemplate = async (broadcastData) => {
 			console.warn(
 				'Error while merging winning templates; falling back to clicks winner.'
 			)
-			winningTemplateName = clicksTemplateName;
+			winningTemplateName = contentTemplateName;
 		}
 	} else {
 		winningTemplateName = clicksWinner.templateName;
