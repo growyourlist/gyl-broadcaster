@@ -23,6 +23,12 @@ if (process.env.DYNAMODB_ENDPOINT) {
 
 const db = new AWS.DynamoDB.DocumentClient(dbParams);
 
+const winningTypes = {
+	AutoMergeSubjectAndContent: 'auto-merge subject (most opens) and content (most clicks) into new email',
+	Content: 'content: email with most clicks',
+	Subject: 'subject: email with most opens',
+}
+
 /**
  * Creates a new queue item.
  */
@@ -237,8 +243,8 @@ const getWinningTemplate = async (broadcastData) => {
 	let clicksWinner = null;
 	let opensWinner = null;
 	const splitTestResults = [];
-	const opensPlayARole = broadcastData.winningType === 'auto-merge subject (most opens) and content (most clicks) into new template' ||
-		broadcastData.winningType === 'subject: email with most opens';
+	const opensPlayARole = broadcastData.winningType === winningTypes.AutoMergeSubjectAndContent ||
+		broadcastData.winningType === winningTypes.Subject;
 	results.forEach((templateResult, templateName) => {
 		const templateClickRatio =
 			templateResult.clicks / (templateResult.sends || 1);
@@ -265,13 +271,13 @@ const getWinningTemplate = async (broadcastData) => {
 	let winningTemplateName = '';
 	if (
 		opensWinner &&
-		broadcastData.winningType === 'subject: email with most opens'
+		broadcastData.winningType === winningTypes.Subject
 	) {
 		winningTemplateName = opensWinner.templateName;
 	} else if(
 		opensWinner &&
 		opensWinner.templateName !== clicksWinner.templateName &&
-		broadcastData.winningType === 'auto-merge subject (most opens) and content (most clicks) into new email'
+		broadcastData.winningType === winningTypes.AutoMergeSubjectAndContent
 	) {
 		const subjectTemplateName = opensWinner.templateName
 		const clicksTemplateName = clicksWinner.templateName
