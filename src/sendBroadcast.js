@@ -242,16 +242,25 @@ const getWinningTemplate = async (broadcastData) => {
 	);
 	let clicksWinner = null;
 	let opensWinner = null;
+	let clicksToOpensWinner = null;
 	const splitTestResults = [];
-	const opensPlayARole = broadcastData.winningType === winningTypes.AutoMergeSubjectAndContent ||
-		broadcastData.winningType === winningTypes.Subject;
 	results.forEach((templateResult, templateName) => {
-		const templateClickRatio =
-			templateResult.clicks / (templateResult.sends || 1);
-		const templateOpenRatio =
-			templateResult.opens / (templateResult.sends || 1);
+		const templateClickRatio = templateResult.sends > 0 ?
+			(templateResult.clicks / templateResult.sends) :
+			0;
+		const templateOpenRatio = templateResult.sends > 0 ?
+			(templateResult.opens / templateResult.sends) :
+			0;
+		const templateClickToOpenRatio = templateResult.opens > 0 ?
+			(templateResult.clicks / templateResult.opens) :
+			0;
 		splitTestResults.push(
-			Object.assign({}, templateResult, { templateName, templateClickRatio, templateOpenRatio })
+			Object.assign({}, templateResult, {
+				templateName,
+				templateClickRatio,
+				templateOpenRatio,
+				templateClickToOpenRatio,
+			})
 		);
 		if (!clicksWinner || clicksWinner.clickRatio < templateClickRatio) {
 			clicksWinner = {
@@ -259,12 +268,16 @@ const getWinningTemplate = async (broadcastData) => {
 				templateName,
 			};
 		}
-		if (opensPlayARole) {
-			if (!opensWinner || opensWinner.openRatio < templateOpenRatio) {
-				opensWinner = {
-					openRatio: templateOpenRatio,
-					templateName,
-				}
+		if (!opensWinner || opensWinner.openRatio < templateOpenRatio) {
+			opensWinner = {
+				openRatio: templateOpenRatio,
+				templateName,
+			}
+		}
+		if (!clicksToOpensWinner || clicksToOpensWinner.clicksToOpensRatio) {
+			clicksToOpensWinner = {
+				clicksToOpensRatio: templateClickToOpenRatio,
+				templateName,
 			}
 		}
 	});
@@ -276,11 +289,11 @@ const getWinningTemplate = async (broadcastData) => {
 		winningTemplateName = opensWinner.templateName;
 	} else if(
 		opensWinner &&
-		opensWinner.templateName !== clicksWinner.templateName &&
+		opensWinner.templateName !== clicksToOpensWinner.templateName &&
 		broadcastData.winningType === winningTypes.AutoMergeSubjectAndContent
 	) {
 		const subjectTemplateName = opensWinner.templateName
-		const contentTemplateName = clicksWinner.templateName
+		const contentTemplateName = clicksToOpensWinner.templateName
 		try {
 			winningTemplateName = await createAutoMergedTemplate({
 				subjectTemplateName,
@@ -296,7 +309,7 @@ const getWinningTemplate = async (broadcastData) => {
 			winningTemplateName = contentTemplateName;
 		}
 	} else {
-		winningTemplateName = clicksWinner.templateName;
+		winningTemplateName = clicksToOpensWinner.templateName;
 	}
 	return {
 		winningTemplate: winningTemplateName,
@@ -405,17 +418,22 @@ const sendVariableTemplatesBroadcast = async (broadcastData) => {
 		const initialSendGroup = [];
 		let subscriber = subscribers.pop();
 		const queue = new PQueue({ concurrency: 16 });
+		const testListPercentage = (
+			process.env.TEST_LIST_PERCENTAGE &&
+			!isNaN(parseFloat(process.env.TEST_LIST_PERCENTAGE)) &&
+			parseFloat(process.env.TEST_LIST_PERCENTAGE)
+		) || 33;
 		while (subscriber) {
-			if (Math.floor(Math.random() * 10) % 2 === 0) {
+			if (Math.floor(Math.random() * 100) < testListPercentage) {
+				initialSendGroup.push(subscriber);
+			} else {
 				const { subscriberId, pendingBroadcasts } = subscriber
 				const subscriberUpdate = async () => updateSubscriberPendingBroadcasts(
-						subscriberId,
-						pendingBroadcasts,
-						newRunAt
-					)
+					subscriberId,
+					pendingBroadcasts,
+					newRunAt
+				)
 				queue.add(subscriberUpdate);
-			} else {
-				initialSendGroup.push(subscriber);
 			}
 			subscriber = subscribers.pop();
 		}
