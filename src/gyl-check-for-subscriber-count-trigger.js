@@ -40,6 +40,7 @@ const startMonitoring = () => {
 								interactionWithAnyEmail:
 									result.Item.value.interactionWithAnyEmail,
 								ignoreConfirmed: result.Item.value.ignoreConfirmed,
+								joinedAfter: result.Item.value.joinedAfter,
 							},
 						},
 					})
@@ -52,6 +53,7 @@ const startMonitoring = () => {
 							interactionWithAnyEmail:
 								result.Item.value.interactionWithAnyEmail,
 							ignoreConfirmed: result.Item.value.ignoreConfirmed,
+							joinedAfter: result.Item.value.joinedAfter,
 						})
 					)
 					.then(() => startMonitoring());

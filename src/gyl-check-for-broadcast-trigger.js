@@ -69,6 +69,7 @@ const processBroadcastQueue = async () => {
 				ignoreConfirmed: nextQueueItem.ignoreConfirmed,
 				tagOnClick: nextQueueItem.tagOnClick,
 				winningType: nextQueueItem.winningType,
+				joinedAfter: nextQueueItem.joinedAfter,
 			});
 		}
 		setTimeout(processBroadcastQueue, 20000);

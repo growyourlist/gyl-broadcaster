@@ -47,6 +47,7 @@ const countSubscribers = async (opts = {}) => {
 		interactions: opts.interactions || [],
 		interactionWithAnyEmail: opts.interactionWithAnyEmail,
 		ignoreConfirmed: opts.ignoreConfirmed,
+		joinedAfter: opts.joinedAfter,
 	};
 
 	// Use an interval to update the count value in the database every second.

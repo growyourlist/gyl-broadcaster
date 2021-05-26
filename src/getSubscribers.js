@@ -62,6 +62,11 @@ const getFilteredSubscribersFromDb = async (opts) => {
 		scanParams.ExpressionAttributeNames['#confirmed'] = 'confirmed';
 		scanParams.ExpressionAttributeValues[':false1'] = false;
 	}
+	if (opts.joinedAfter) {
+		scanParams.FilterExpression += ' and #joined >= :joinedAfter';
+		scanParams.ExpressionAttributeNames['#joined'] = 'joined';
+		scanParams.ExpressionAttributeValues[':joinedAfter'] = opts.joinedAfter;
+	}
 	if (
 		opts.interactionWithAnyEmail &&
 		typeof opts.interactionWithAnyEmail === 'object' &&
