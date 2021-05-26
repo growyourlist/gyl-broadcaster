@@ -126,6 +126,7 @@ const sendSingleTemplateBroadcast = async (broadcastData) => {
 		pendingBroadcast: broadcastData.broadcastRunAtId,
 		interactionWithAnyEmail: broadcastData.interactionWithAnyEmail,
 		ignoreConfirmed: broadcastData.ignoreConfirmed,
+		joinedAfter: broadcastData.joinedAfter,
 	});
 	if (!subscribers || !subscribers.length) {
 		return 0;
@@ -394,6 +395,7 @@ const sendVariableTemplatesBroadcast = async (broadcastData) => {
 			interactions: broadcastData.interactions,
 			interactionWithAnyEmail: broadcastData.interactionWithAnyEmail,
 			ignoreConfirmed: broadcastData.ignoreConfirmed,
+			joinedAfter: broadcastData.joinedAfter,
 		});
 		if (!subscribers || !subscribers.length) {
 			await updateBroadcastPhase(broadcastData, {
