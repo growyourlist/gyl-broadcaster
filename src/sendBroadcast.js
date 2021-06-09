@@ -44,15 +44,30 @@ const newQueueItem = (itemData, runAt) => {
 	});
 };
 
+const maxEmailsPerSecondRaw = process.env.MAX_EMAILS_PER_SECOND || '40';
+const maxEmailsPerSecond = !isNaN(parseFloat(maxEmailsPerSecondRaw)) ?
+	parseFloat(maxEmailsPerSecondRaw) :
+	40;
+
+if (maxEmailsPerSecond <= 0) {
+	throw new Error(`MAX_EMAILS_PER_SECOND must be a positive integer`)
+}
+
+const delayBetweenEmails = 1000.0 / maxEmailsPerSecond;
+
+console.info(`Configured to schedule broadcast emails at a max of rate of
+${maxEmailsPerSecond} emails per second. That is, an average delay of ${
+	delayBetweenEmails.toFixed(2)} milliseconds between broadcast emails`);
+
 const queueItemsForSubscriberGroup = async (subscriberGroup, broadcastData) => {
-	const startTime = Date.now();
 	await writeAllForDynamoDB(db, {
 		RequestItems: {
 			[`${dbTablePrefix}Queue`]: subscriberGroup.map((subscriber, i) => {
-				// Run at increases with the time offset and the square root of the number of subscribers
-				// to avoid id collision when generating queue items.
+				const delay = i * delayBetweenEmails;
+				// Use delay between emails to ensure broadcast emails remain under
+				// max emails per minute.
 				const runAt = parseInt(
-					broadcastData.validRunAt + (Date.now() - startTime) + Math.sqrt(i)
+					broadcastData.validRunAt + delay
 				);
 				const Item = newQueueItem(
 					{
