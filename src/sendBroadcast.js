@@ -1,5 +1,6 @@
 const AWS = require('aws-sdk');
 const { default: PQueue } = require('p-queue');
+const { DateTime } = require('luxon');
 const {
 	fullScanForDynamoDB,
 	ReturnType: ScanReturnType,
@@ -59,16 +60,46 @@ console.info(`Configured to schedule broadcast emails at a max of rate of
 ${maxEmailsPerSecond} emails per second. That is, an average delay of ${
 	delayBetweenEmails.toFixed(2)} milliseconds between broadcast emails`);
 
+function getSubscriberTimezone(subscriber) {
+	return subscriber.timezone || 'America/Los_Angeles';
+}
+
+/**
+ * 
+ * @param {*} timezone 
+ * @param {DateTime} referenceTimestampDatetime 
+ * @param {*} delay 
+ * @returns 
+ */
+function getRunAtForTimezone(timezone, subscriberRunAt, delay) {
+	try {
+		const datetimeInTimezone = DateTime.fromISO(subscriberRunAt, {
+			zone: timezone
+		});
+		if (!datetimeInTimezone.isValid) {
+			// Subscriber probably doesn't have a valid timezone, use generic time
+			return parseInt(Date.parse(subscriberRunAt) + delay)
+		}
+		return datetimeInTimezone.plus({ milliseconds: delay }).valueOf();
+	} catch (err) {
+		console.error(err.message);
+		// Something went wrong using the timezone, so just parse with system
+		// timezone:
+		return parseInt(Date.parse(subscriberRunAt) + delay)
+	}
+}
+
 const queueItemsForSubscriberGroup = async (subscriberGroup, broadcastData) => {
+	const { useSubscriberTime, subscriberRunAt } = broadcastData;
 	await writeAllForDynamoDB(db, {
 		RequestItems: {
 			[`${dbTablePrefix}Queue`]: subscriberGroup.map((subscriber, i) => {
 				const delay = i * delayBetweenEmails;
 				// Use delay between emails to ensure broadcast emails remain under
 				// max emails per minute.
-				const runAt = parseInt(
-					broadcastData.validRunAt + delay
-				);
+				const runAt = useSubscriberTime ?
+					getRunAtForTimezone(getSubscriberTimezone(subscriber), subscriberRunAt, delay) :
+					parseInt(broadcastData.validRunAt + delay)
 				const Item = newQueueItem(
 					{
 						type: 'send email',
@@ -495,18 +526,45 @@ const sendVariableTemplatesBroadcast = async (broadcastData) => {
  * @return {Promise}
  */
 const sendBroadcast = async (broadcastData) => {
-	const broadcastRunAtTimestamp = parseInt(broadcastData.runAt);
-	if (isNaN(broadcastRunAtTimestamp)) {
-		await updateBroadcastPhase(broadcastData, {
-			phase: 'error',
-			errorReason: 'Invalid broadcast runAt value - NaN',
-		});
-		return;
+	if (broadcastData.datetimeContext === 'subscriber') {
+		if (
+			typeof broadcastData.subscriberRunAt !== 'string' ||
+			!(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(broadcastData.subscriberRunAt)) ||
+			!(DateTime.fromISO(broadcastData.subscriberRunAt).isValid)
+		) {
+			await updateBroadcastPhase(broadcastData, {
+				phase: 'error',
+				errorReason: 'Invalid broadcast subscriberRunAt value - not a valid date format',
+			});
+			return;
+		}
+		const broadcastRunAtTimestamp = parseInt(broadcastData.runAt);
+		if (isNaN(broadcastRunAtTimestamp)) {
+			await updateBroadcastPhase(broadcastData, {
+				phase: 'error',
+				errorReason: 'Invalid broadcast runAt value - NaN',
+			});
+			return;
+		}
+		broadcastData.validRunAt = broadcastRunAtTimestamp;
+		broadcastData.startDate = broadcastData.subscriberRunAt.substring(0, 10);
+		broadcastData.useSubscriberTime = true;
+	} else {
+		const broadcastRunAtTimestamp = parseInt(broadcastData.runAt);
+		if (isNaN(broadcastRunAtTimestamp)) {
+			await updateBroadcastPhase(broadcastData, {
+				phase: 'error',
+				errorReason: 'Invalid broadcast runAt value - NaN',
+			});
+			return;
+		}
+		broadcastData.validRunAt = broadcastRunAtTimestamp;
+		broadcastData.startDate = new Date(broadcastData.validRunAt)
+			.toISOString()
+			.substring(0, 10);
+		broadcastData.useSubscriberTime = false;
 	}
-	broadcastData.validRunAt = broadcastRunAtTimestamp;
-	broadcastData.startDate = new Date(broadcastData.validRunAt)
-		.toISOString()
-		.substring(0, 10);
+
 	if (typeof broadcastData.templateId === 'string') {
 		broadcastData = await updateBroadcastPhase(broadcastData, {
 			phase: 'sending-broadcast',

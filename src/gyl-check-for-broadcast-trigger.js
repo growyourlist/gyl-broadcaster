@@ -70,6 +70,8 @@ const processBroadcastQueue = async () => {
 				tagOnClick: nextQueueItem.tagOnClick,
 				winningType: nextQueueItem.winningType,
 				joinedAfter: nextQueueItem.joinedAfter,
+				datetimeContext: nextQueueItem.datetimeContext,
+				subscriberRunAt: nextQueueItem.subscriberRunAt,
 			});
 		}
 		setTimeout(processBroadcastQueue, 20000);
