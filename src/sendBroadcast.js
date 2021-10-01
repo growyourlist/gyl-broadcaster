@@ -80,7 +80,7 @@ function getRunAtForTimezone(timezone, subscriberRunAt, delay) {
 			// Subscriber probably doesn't have a valid timezone, use generic time
 			return parseInt(Date.parse(subscriberRunAt) + delay)
 		}
-		return datetimeInTimezone.plus({ milliseconds: delay }).valueOf();
+		return parseInt(datetimeInTimezone.plus({ milliseconds: delay }).valueOf());
 	} catch (err) {
 		console.error(err.message);
 		// Something went wrong using the timezone, so just parse with system
