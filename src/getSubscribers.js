@@ -164,7 +164,6 @@ const getSubscribersIdsMatchingInteractionFilter = async (interaction) => {
 	}
 	await queryAllForDynamoDB(db, queryParams, {
 		onEachItem: (item) => {
-			console.log('f i')
 			subscribeIdSet.add(item.subscriberId);
 		},
 		returnType: ReturnType.none,
