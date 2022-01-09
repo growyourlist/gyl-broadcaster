@@ -9,7 +9,7 @@ const { queryAllForDynamoDB, ReturnType } = require('query-all-for-dynamodb');
 const dbTablePrefix = process.env.DB_TABLE_PREFIX || '';
 const { writeAllForDynamoDB } = require('write-all-for-dynamodb');
 
-const getSubscribers = require('./getSubscribers');
+const scanSubscribers = require('./scanSubscribers');
 const createAutoMergedTemplate = require('./createAutoMergedTemplate');
 
 const dbParams = {
@@ -164,7 +164,8 @@ const updateSubscriberRemoveBroadcast = async (
 }
 
 const sendSingleTemplateBroadcast = async (broadcastData) => {
-	const subscribers = await getSubscribers({
+	let totalSubscribersCount = 0;
+	await scanSubscribers({
 		tags: broadcastData.tags,
 		excludeTags: broadcastData.excludeTags,
 		properties: broadcastData.properties,
@@ -173,11 +174,21 @@ const sendSingleTemplateBroadcast = async (broadcastData) => {
 		interactionWithAnyEmail: broadcastData.interactionWithAnyEmail,
 		ignoreConfirmed: broadcastData.ignoreConfirmed,
 		joinedAfter: broadcastData.joinedAfter,
+		onEachChunk: async (subscribers) => {
+			try {
+				if (subscribers && subscribers.length) {
+					await queueItemsForSubscriberGroup(subscribers, broadcastData);
+					totalSubscribersCount += subscribers.length;
+				} else {
+					console.log(`No subscribers found in chunk`);
+				}
+			} catch (err) {
+				console.error(`Error queuing items for subscribers chunk`);
+				console.error(err);
+			}
+		}
 	});
-	if (!subscribers || !subscribers.length) {
-		return 0;
-	}
-	await queueItemsForSubscriberGroup(subscribers, broadcastData);
+	return totalSubscribersCount;
 };
 
 const sendVariableTemplatesBroadcastToSubscribers = async (
@@ -434,7 +445,24 @@ const sendVariableTemplatesBroadcast = async (broadcastData) => {
 			});
 			return;
 		}
-		const subscribers = await getSubscribers({
+		let totalSubscribersCount = 0;
+		const testDurationHours = (
+			process.env.TEST_DURATION_HOURS &&
+			!isNaN(parseFloat(process.env.TEST_DURATION_HOURS)) &&
+			parseFloat(process.env.TEST_DURATION_HOURS)
+		) || 4;
+		const newRunAt = `${testDurationHours * 60 * 60 * 1000 + broadcastData.validRunAt}.${broadcastData.runAt.split('.')[1]
+			}`;
+		broadcastData = await updateBroadcastPhase(broadcastData, {
+			phase: 'starting-test',
+			runAt: newRunAt,
+		});
+		const testListPercentage = (
+			process.env.TEST_LIST_PERCENTAGE &&
+			!isNaN(parseFloat(process.env.TEST_LIST_PERCENTAGE)) &&
+			parseFloat(process.env.TEST_LIST_PERCENTAGE)
+		) || 33;
+		await scanSubscribers({
 			tags: broadcastData.tags,
 			excludeTags: broadcastData.excludeTags,
 			properties: broadcastData.properties,
@@ -442,54 +470,45 @@ const sendVariableTemplatesBroadcast = async (broadcastData) => {
 			interactionWithAnyEmail: broadcastData.interactionWithAnyEmail,
 			ignoreConfirmed: broadcastData.ignoreConfirmed,
 			joinedAfter: broadcastData.joinedAfter,
+			onEachChunk: async (subscribers) => {
+				try {
+					totalSubscribersCount += subscribers.length;
+					const initialSendGroup = [];
+					let subscriber = subscribers.pop();
+					const queue = new PQueue({ concurrency: 16 });
+					while (subscriber) {
+						if (Math.floor(Math.random() * 100) < testListPercentage) {
+							initialSendGroup.push(subscriber);
+						} else {
+							const { subscriberId, pendingBroadcasts } = subscriber
+							const subscriberUpdate = async () => updateSubscriberPendingBroadcasts(
+								subscriberId,
+								pendingBroadcasts,
+								newRunAt
+							)
+							queue.add(subscriberUpdate);
+						}
+						subscriber = subscribers.pop();
+					}
+					await queue.onIdle();
+					await sendVariableTemplatesBroadcastToSubscribers(
+						broadcastData,
+						initialSendGroup
+					);
+				} catch (err) {
+					console.error(`Error attempting to send variation test broadcast`)
+					console.error(err);
+				}
+			}
 		});
-		if (!subscribers || !subscribers.length) {
+		if (!totalSubscribersCount) {
 			await updateBroadcastPhase(broadcastData, {
 				phase: 'skipped',
 				skipReason: 'No subscribers were found',
 			});
 			return;
 		}
-		console.log(`Sending to ${subscribers.length} subscribers`);
-		const testDurationHours = (
-			process.env.TEST_DURATION_HOURS &&
-			!isNaN(parseFloat(process.env.TEST_DURATION_HOURS)) &&
-			parseFloat(process.env.TEST_DURATION_HOURS)
-		) || 4;
-		const newRunAt = `${testDurationHours * 60 * 60 * 1000 + broadcastData.validRunAt}.${
-			broadcastData.runAt.split('.')[1]
-		}`;
-		broadcastData = await updateBroadcastPhase(broadcastData, {
-			phase: 'starting-test',
-			runAt: newRunAt,
-		});
-		const initialSendGroup = [];
-		let subscriber = subscribers.pop();
-		const queue = new PQueue({ concurrency: 16 });
-		const testListPercentage = (
-			process.env.TEST_LIST_PERCENTAGE &&
-			!isNaN(parseFloat(process.env.TEST_LIST_PERCENTAGE)) &&
-			parseFloat(process.env.TEST_LIST_PERCENTAGE)
-		) || 33;
-		while (subscriber) {
-			if (Math.floor(Math.random() * 100) < testListPercentage) {
-				initialSendGroup.push(subscriber);
-			} else {
-				const { subscriberId, pendingBroadcasts } = subscriber
-				const subscriberUpdate = async () => updateSubscriberPendingBroadcasts(
-					subscriberId,
-					pendingBroadcasts,
-					newRunAt
-				)
-				queue.add(subscriberUpdate);
-			}
-			subscriber = subscribers.pop();
-		}
-		await queue.onIdle();
-		await sendVariableTemplatesBroadcastToSubscribers(
-			broadcastData,
-			initialSendGroup
-		);
+		console.log(`Sent to ${totalSubscribersCount} subscribers`);
 		await updateBroadcastPhase(broadcastData, {
 			phase: 'in-test',
 			runAt: newRunAt,

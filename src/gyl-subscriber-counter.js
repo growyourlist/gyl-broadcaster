@@ -1,6 +1,6 @@
 require('dotenv').config();
 const dynamodb = require('dynopromise-client');
-const getSubscribers = require('./getSubscribers');
+const scanSubscribers = require('./scanSubscribers');
 const dbTablePrefix = process.env.DB_TABLE_PREFIX || '';
 
 // Create DB connection
@@ -62,17 +62,17 @@ const countSubscribers = async (opts = {}) => {
 
 	try {
 		// Get all subscribers matching the filters
-		const subscribers = await getSubscribers(
+		await scanSubscribers(
 			Object.assign({}, fullOpts, {
 				consistentRead: false,
-				onEachSubscriber: () => ++count,
+				onEachChunk: (subscribers) => count += subscribers.length,
 			})
 		);
 		clearInterval(intervalId);
 
 		// Return the final subscriber count.
 		await updateCountValue(Object.assign({}, fullOpts, {
-			count: subscribers.length,
+			count,
 			status: 'complete',
 		}));
 	} catch (err) {

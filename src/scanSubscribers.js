@@ -1,5 +1,4 @@
 const AWS = require('aws-sdk');
-const { fullScanForDynamoDB } = require('full-scan-for-dynamodb');
 const { queryAllForDynamoDB, ReturnType } = require('query-all-for-dynamodb');
 const dbTablePrefix = process.env.DB_TABLE_PREFIX || '';
 
@@ -41,92 +40,6 @@ function intersection(sets) {
 	});
 	return intersectionSet;
 }
-
-const getFilteredSubscribersFromDb = async (opts) => {
-	const scanParams = {
-		TableName: `${dbTablePrefix}Subscribers`,
-		FilterExpression:
-			'(#unsub = :false2 or attribute_not_exists(#unsub)) ' +
-			'and (not (contains(#tags, :unsubscribed)))',
-		ExpressionAttributeNames: {
-			'#unsub': 'unsubscribed',
-			'#tags': 'tags',
-		},
-		ExpressionAttributeValues: {
-			':false2': false,
-			':unsubscribed': 'unsubscribed',
-		},
-	};
-	if (!opts.ignoreConfirmed) {
-		scanParams.FilterExpression += ' and (#confirmed <> :false1)';
-		scanParams.ExpressionAttributeNames['#confirmed'] = 'confirmed';
-		scanParams.ExpressionAttributeValues[':false1'] = false;
-	}
-	if (opts.joinedAfter) {
-		scanParams.FilterExpression += ' and #joined >= :joinedAfter';
-		scanParams.ExpressionAttributeNames['#joined'] = 'joined';
-		scanParams.ExpressionAttributeValues[':joinedAfter'] = opts.joinedAfter;
-	}
-	if (
-		opts.interactionWithAnyEmail &&
-		typeof opts.interactionWithAnyEmail === 'object' &&
-		opts.interactionWithAnyEmail.interactionPeriodUnit === 'days' &&
-		typeof opts.interactionWithAnyEmail.interactionPeriodValue === 'number'
-	) {
-		const duration = opts.interactionWithAnyEmail.interactionPeriodValue * 24 * 60 * 60 * 1000
-		const thresholdTimestamp = Date.now() - duration
-		if (opts.interactionWithAnyEmail.interactionType === 'opened or clicked') {
-			scanParams.FilterExpression +=
-				' and (#lastOpenOrClick >= :openOrClickThreshold)';
-			scanParams.ExpressionAttributeNames['#lastOpenOrClick'] =
-				'lastOpenOrClick';
-			scanParams.ExpressionAttributeValues[':openOrClickThreshold'] =
-				thresholdTimestamp;
-		} else if (opts.interactionWithAnyEmail.interactionType === 'clicked') {
-			scanParams.FilterExpression += ' and (#lastClick >= :lastClickThreshold)';
-			scanParams.ExpressionAttributeNames['#lastClick'] = 'lastClick';
-			scanParams.ExpressionAttributeValues[':lastClickThreshold'] =
-				thresholdTimestamp;
-		}
-	}
-	if (opts.pendingBroadcast) {
-		scanParams.FilterExpression += 
-			' and contains(#pendingBroadcasts, :pendingBroadcast)';
-		scanParams.ExpressionAttributeNames['#pendingBroadcasts'] = 'pendingBroadcasts';
-		scanParams.ExpressionAttributeValues[':pendingBroadcast'] = opts.pendingBroadcast;
-	}
-	if (Object.prototype.hasOwnProperty.call(opts, 'consistentRead')) {
-		scanParams.ConsistentRead = opts.consistentRead;
-	}
-	if (Array.isArray(opts.tags)) {
-		scanParams['FilterExpression'] += opts.tags
-			.map((tag, index) => ` and contains(#tags, :tag${index})`)
-			.join('');
-		opts.tags.forEach((tag, index) => {
-			scanParams['ExpressionAttributeValues'][`:tag${index}`] = tag;
-		});
-	}
-	if (Array.isArray(opts.excludeTags)) {
-		scanParams['FilterExpression'] += opts.excludeTags
-			.map((tag, index) => ` and not(contains(#tags, :excludeTag${index}))`)
-			.join('');
-		opts.excludeTags.forEach((tag, index) => {
-			scanParams['ExpressionAttributeValues'][`:excludeTag${index}`] = tag;
-		});
-	}
-	if (typeof opts.properties === 'object') {
-		let index = 0;
-		for (let prop in opts.properties) {
-			scanParams['FilterExpression'] += ` and #prop${index} = :prop${index}`;
-			scanParams['ExpressionAttributeNames'][`#prop${index}`] = prop;
-			scanParams['ExpressionAttributeValues'][`:prop${index}`] =
-				opts.properties[prop];
-			index++;
-		}
-	}
-	const subscribers = await fullScanForDynamoDB(db, scanParams);
-	return subscribers;
-};
 
 const getSubscribersIdsMatchingInteractionFilter = async (interaction) => {
 	console.log('match interaction')
@@ -184,34 +97,131 @@ const getSubscribersIdsMatchingInteractionFilters = async (interactions) => {
 	return intersectionSet;
 };
 
-const getSubscribers = async (opts) => {
+const scanSubscribers = async (opts) => {
 	console.log('Searching for subscribers with properties');
 	console.log(opts);
-	const [subscriberIds, subscriberPool] = await Promise.all([
-		Promise.resolve(
-			opts.interactions &&
-				opts.interactions.length &&
-				getSubscribersIdsMatchingInteractionFilters(opts.interactions)
-		),
-		getFilteredSubscribersFromDb(opts),
-	]);
-	if (!opts.interactions || !opts.interactions.length) {
-		console.log(`${subscriberPool.length} subscribers found`);
-		return subscriberPool;
-	}
-	const finalSubscribers = [];
-	let subscriber = subscriberPool.pop();
-	if (!subscriberIds || !subscriberIds.size) {
-		return finalSubscribers;
-	}
-	while (subscriber) {
-		if (subscriberIds.has(subscriber.subscriberId)) {
-			finalSubscribers.push(subscriber);
+	const subscriberIds = await Promise.resolve(
+		opts.interactions &&
+		opts.interactions.length &&
+		getSubscribersIdsMatchingInteractionFilters(opts.interactions)
+	);
+	if (subscriberIds) {
+		console.log(`Filtering by subscriber ids which match interaction filters. ` +
+		`Subscriber id count: ${subscriberIds.size}`);
+		if (!subscriberIds.size) {
+			return 0;
 		}
-		subscriber = subscriberPool.pop();
+	} else {
+		console.log(`No interaction filter used`);
 	}
-	console.log(`${finalSubscribers.length} subscribers found`);
-	return finalSubscribers;
+	const scanParams = {
+		TableName: `${dbTablePrefix}Subscribers`,
+		FilterExpression:
+			'(#unsub = :false2 or attribute_not_exists(#unsub)) ' +
+			'and (not (contains(#tags, :unsubscribed)))',
+		ExpressionAttributeNames: {
+			'#unsub': 'unsubscribed',
+			'#tags': 'tags',
+		},
+		ExpressionAttributeValues: {
+			':false2': false,
+			':unsubscribed': 'unsubscribed',
+		},
+	};
+	if (!opts.ignoreConfirmed) {
+		scanParams.FilterExpression += ' and (#confirmed <> :false1)';
+		scanParams.ExpressionAttributeNames['#confirmed'] = 'confirmed';
+		scanParams.ExpressionAttributeValues[':false1'] = false;
+	}
+	if (opts.joinedAfter) {
+		scanParams.FilterExpression += ' and #joined >= :joinedAfter';
+		scanParams.ExpressionAttributeNames['#joined'] = 'joined';
+		scanParams.ExpressionAttributeValues[':joinedAfter'] = opts.joinedAfter;
+	}
+	if (
+		opts.interactionWithAnyEmail &&
+		typeof opts.interactionWithAnyEmail === 'object' &&
+		opts.interactionWithAnyEmail.interactionPeriodUnit === 'days' &&
+		typeof opts.interactionWithAnyEmail.interactionPeriodValue === 'number'
+	) {
+		const duration = opts.interactionWithAnyEmail.interactionPeriodValue * 24 * 60 * 60 * 1000
+		const thresholdTimestamp = Date.now() - duration
+		if (opts.interactionWithAnyEmail.interactionType === 'opened or clicked') {
+			scanParams.FilterExpression +=
+				' and (#lastOpenOrClick >= :openOrClickThreshold)';
+			scanParams.ExpressionAttributeNames['#lastOpenOrClick'] =
+				'lastOpenOrClick';
+			scanParams.ExpressionAttributeValues[':openOrClickThreshold'] =
+				thresholdTimestamp;
+		} else if (opts.interactionWithAnyEmail.interactionType === 'clicked') {
+			scanParams.FilterExpression += ' and (#lastClick >= :lastClickThreshold)';
+			scanParams.ExpressionAttributeNames['#lastClick'] = 'lastClick';
+			scanParams.ExpressionAttributeValues[':lastClickThreshold'] =
+				thresholdTimestamp;
+		}
+	}
+	if (opts.pendingBroadcast) {
+		scanParams.FilterExpression +=
+			' and contains(#pendingBroadcasts, :pendingBroadcast)';
+		scanParams.ExpressionAttributeNames['#pendingBroadcasts'] = 'pendingBroadcasts';
+		scanParams.ExpressionAttributeValues[':pendingBroadcast'] = opts.pendingBroadcast;
+	}
+	if (Object.prototype.hasOwnProperty.call(opts, 'consistentRead')) {
+		scanParams.ConsistentRead = opts.consistentRead;
+	}
+	if (Array.isArray(opts.tags)) {
+		scanParams['FilterExpression'] += opts.tags
+			.map((tag, index) => ` and contains(#tags, :tag${index})`)
+			.join('');
+		opts.tags.forEach((tag, index) => {
+			scanParams['ExpressionAttributeValues'][`:tag${index}`] = tag;
+		});
+	}
+	if (Array.isArray(opts.excludeTags)) {
+		scanParams['FilterExpression'] += opts.excludeTags
+			.map((tag, index) => ` and not(contains(#tags, :excludeTag${index}))`)
+			.join('');
+		opts.excludeTags.forEach((tag, index) => {
+			scanParams['ExpressionAttributeValues'][`:excludeTag${index}`] = tag;
+		});
+	}
+	if (typeof opts.properties === 'object') {
+		let index = 0;
+		for (let prop in opts.properties) {
+			scanParams['FilterExpression'] += ` and #prop${index} = :prop${index}`;
+			scanParams['ExpressionAttributeNames'][`#prop${index}`] = prop;
+			scanParams['ExpressionAttributeValues'][`:prop${index}`] =
+				opts.properties[prop];
+			index++;
+		}
+	}
+	let count = 0;
+	let LastEvaluatedKey = null;
+	const doOnEachChunk = typeof opts.onEachChunk === 'function';
+	const onEachChunk = opts.onEachChunk;
+	do {
+		const roundParams = Object.assign({}, scanParams);
+		if (LastEvaluatedKey) {
+			roundParams.ExclusiveStartKey = LastEvaluatedKey
+		}
+
+		const scanResponse = await db.scan(roundParams).promise();
+		if (scanResponse.Count && Array.isArray(scanResponse.Items)) {
+			const matchingSubscribersInChunk = subscriberIds ? 
+				scanResponse.Items.filter(
+					subscriber => subscriber.subscriberId && subscriberIds.has(subscriber.subscriberId)
+				) :
+				scanResponse.Items;
+			if (doOnEachChunk) {
+				await Promise.resolve(onEachChunk(matchingSubscribersInChunk));
+			}
+			count += matchingSubscribersInChunk.length;
+		}
+
+		LastEvaluatedKey = scanResponse.LastEvaluatedKey || null
+
+	} while (LastEvaluatedKey)
+	return count;
 };
 
-module.exports = getSubscribers;
+module.exports = scanSubscribers;
