@@ -188,6 +188,7 @@ const sendSingleTemplateBroadcast = async (broadcastData) => {
 			}
 		}
 	});
+	console.log(`Sent ${broadcastData.templateId} broadcast to ${totalSubscribersCount} subscribers`)
 	return totalSubscribersCount;
 };
 
