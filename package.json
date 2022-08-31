@@ -13,7 +13,7 @@
     "dynopromise-client": "^0.2.0",
     "full-scan-for-dynamodb": "^0.0.9",
     "luxon": "^2.0.2",
-    "moment-timezone": "^0.5.23",
+    "moment-timezone": "^0.5.35",
     "p-queue": "^6.6.2",
     "query-all-for-dynamodb": "^0.0.2",
     "rss-parser": "^3.6.2",
